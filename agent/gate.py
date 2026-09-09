@@ -145,9 +145,15 @@ class ActionGate:
         if action.method == "unlink":
             return model.unlink(action.args.get("ids", []))
         if action.method == "call":
-            target = model.browse(action.args.get("ids", [])) if action.args.get("ids") else model
+            # Call a record method via execute_kw: pass the ids as the first
+            # positional argument (Odoo browses them server-side). We avoid
+            # odoorpc's Model.browse(): with Odoo 19 it triggers
+            # "module 'odoo.models' has no attribute 'NewId'".
             method = action.args.get("method")
-            return getattr(target, method)(*action.args.get("pos_args", []), **action.args.get("kwargs", {}))
+            args = list(action.args.get("pos_args", []))
+            if action.args.get("ids"):
+                args.insert(0, action.args.get("ids"))
+            return getattr(model, method)(*args, **action.args.get("kwargs", {}))
         raise ValueError(f"unsupported method: {action.method}")
 
     def _audit(self, request_id: int, action: AgentAction, decision: Decision, note: str, **extra: Any) -> None:

@@ -57,9 +57,11 @@ ai-agent/
 │   ├── odoo_client.py   # Odoo API 客户端封装（odoorpc）
 │   ├── audit.py         # 审计日志（JSONL，全程留痕）
 │   ├── gate.py          # 动作权限门（写操作必须人工确认）
-│   └── tier_precheck.py # 规则引擎预检（对接 OCA base_tier_validation）
+│   ├── tier_precheck.py # 规则引擎预检（对接 OCA base_tier_validation）
+│   └── sales_agent.py   # 领域 Agent 第一弹：销售（草稿报价单 → 确认）
 ├── main.py              # 最小闭环演示：连接 + 只读查询
 ├── demo_approval.py     # 权限门演示：AI 提交 → 预检 → 人审批 → 执行/拒绝
+├── sales_demo.py        # 销售 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
 ├── setup_tier_rule.py   # 创建演示 tier 审批规则
 ├── requirements.txt     # Python 依赖
 ├── .env.example         # 配置模板（复制为 .env 后填写）
@@ -144,12 +146,52 @@ venv/bin/python demo_approval.py --partner 1
 [gate]   check  :   [命中] AI demo: partner 3 quotations need approval → 需 用户:Administrator 审批（任一审批人即可）
 ```
 
+## 销售 Agent（领域 Agent 第一弹）
+
+`agent/sales_agent.py` 是第一个领域 Agent：**盯着草稿报价单队列 → 规则预检 → 
+把"确认订单"作为写动作提交权限门 → 人拍板后才执行**。它永远不自己确认
+任何订单——这正是项目规则的体现。
+
+```bash
+venv/bin/python sales_demo.py --scan       # 只读扫描草稿报价单
+venv/bin/python sales_demo.py              # 创建 demo 草稿，提交确认请求后停在 pending
+venv/bin/python sales_demo.py --approve    # 完整闭环：创建→审批→确认→验证→取消→清理
+```
+
+`--approve` 完整闭环输出（节选）：
+
+```
+[sales-agent] S00020 (partner=Administrator, total=0.0) -> request #2 decision=approved
+[verify] quotation state after confirmation = sale
+[demo] cancelled 6 confirmed demo quotation(s)
+[demo] cleaned 6 demo quotation(s)
+```
+
+**设计要点**：
+- `run_once(only_ids=...)` 限定只处理指定记录——**demo 永远不会碰真实业务订单**；
+- 演示动作自清理：确认后的订单先 `action_cancel` 再删除（Odoo 不允许直接删已确认订单），业务库保持干净。
+
+## Odoo 19 适配要点（OCA tier validation）
+
+本项目在 Odoo 19 上安装 OCA `base_tier_validation` / `sale_tier_validation` /
+`purchase_tier_validation`（18.0 分支）时踩过的坑，均已修复：
+
+| Odoo 18 | Odoo 19 | 位置 |
+|---|---|---|
+| `models.NewId`（已移除） | 判断改为 `not isinstance(rec.id, int)` | `tier_validation.py` `_compute_need_validation` |
+| `res.users.groups_id` | `res.users.group_ids` | `tier_validation.py` 异常搜索 domain |
+| `res.groups.users` | `res.groups.all_user_ids` | `tier_review.py` reviewer 字段 |
+| manifest `version` 前缀 | 必须 `19.0.*` 否则 uninstallable | 三个模块 manifest |
+| search 视图 `<group expand=... string=...>` | `<group>` 不允许任何属性 | `tier_definition_view.xml` |
+
 ## 下一步（路线图）
 
 - [x] 动作权限门：默认只读，关键写操作需人工确认（`agent/gate.py`）
 - [x] 全程留痕：审计日志 `agent/audit.py`
 - [x] 规则引擎预检：对接 OCA `base_tier_validation` 的审批层级（`agent/tier_precheck.py`）
-- [ ] 领域 Agent 舰队：销售 / 采购 / 生产 / 财务 / 物流
+- [x] 领域 Agent 第一弹：销售 Agent（草稿报价单 → 确认，全程经权限门，`agent/sales_agent.py`）
+- [ ] 领域 Agent 舰队：采购 / 生产 / 财务 / 物流
+- [ ] 端到端履约链路：订单 → 采购 → 到货检验 → 付款 → 生产 → 出货 → 物流 → 签收
 - [ ] docker-compose 交付：odoo + postgres + ai-agent 三服务
 
 ## 开源协议

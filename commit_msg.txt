@@ -1,0 +1,10 @@
+Initial commit: AI operation layer skeleton for Odoo
+
+- Odoo API client (odoorpc) with config from env/.env
+- Action permission gate: read auto-allowed, write requires human approval
+- Audit log (JSONL) for full traceability
+- Tier rule pre-check backed by OCA base_tier_validation
+- Demo scripts: minimal closed loop + approval gate flow
+
+Project vision: AI agents operate Odoo's full workflow, human makes the
+judgment at key nodes, AI never walks the whole process alone.

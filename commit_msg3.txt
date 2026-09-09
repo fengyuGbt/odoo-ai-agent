@@ -1,0 +1,7 @@
+docs: add contributing guide, issue/PR templates, bilingual README
+
+- CONTRIBUTING.md: dev environment, code standards, conventional
+  commits, branch/PR flow, verification checklist, security red lines
+- .github/ISSUE_TEMPLATE: bug report + feature request templates
+- .github/pull_request_template.md
+- README: English summary at top for the international Odoo community

@@ -1,5 +1,34 @@
 # odoo-ai-agent —— Odoo「AI 操作层」服务骨架
 
+## English
+
+**odoo-ai-agent** is an **AI operation layer** for Odoo: an agent service that
+runs outside Odoo and operates Odoo's full workflow through its API.
+
+Core principle — **AI runs the flow, humans make the judgment, AI never walks
+the whole process alone**:
+
+1. **AI runs the flow**: order → approval → purchase → receiving → production → shipping → collection,
+   driven by agents;
+2. **Human makes the judgment**: every write action stops at an action gate
+   (`agent/gate.py`) and waits for explicit human approval;
+3. **Rule pre-check**: before submitting a write action, the agent evaluates the
+   tier-approval rules configured in Odoo (OCA `base_tier_validation`) and
+   presents the findings (which rules hit, who must approve) together with the
+   pending request;
+4. **Full audit trail**: every agent action — approved, rejected, blocked — is
+   appended to a JSONL audit log.
+
+**Status**: connection + read-only probing, action gate, audit trail, tier-rule
+pre-check all working. Open source, MIT. Free to use; paid services only for
+"human-in-the-loop" implementation/operations.
+
+For contributors, see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+---
+
+## 中文
+
 一个独立于 Odoo 运行的服务，通过 Odoo 的 XML-RPC/JSON-RPC API 连接 Odoo，
 作为整个「AI 操作层」项目的第一块地基。当前阶段已完成：连接 + 只读查询、
 动作权限门（写操作必须人工确认）、审计留痕、规则引擎预检（对接 OCA
@@ -127,3 +156,8 @@ venv/bin/python demo_approval.py --partner 1
 
 [MIT License](LICENSE)。项目源代码全部开源、免费使用；商业服务（需要人工
 出面的实施/运维）另行收费。
+
+## 参与贡献
+
+见 [CONTRIBUTING.md](CONTRIBUTING.md)（贡献指南、代码规范、提交规范、PR 流程）。
+Bug / 功能请求请用仓库内置的 Issue 模板。

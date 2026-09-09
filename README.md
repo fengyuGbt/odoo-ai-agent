@@ -61,13 +61,17 @@ ai-agent/
 │   ├── domain_agent.py  # 领域 Agent 通用基类（发现→预检→提交确认→等审批）
 │   ├── sales_agent.py   # 销售 Agent：草稿报价单 → 确认
 │   ├── purchase_agent.py # 采购 Agent：草稿采购单 → 确认
-│   └── demand_agent.py  # 需求 Agent：库存分析 → 采购提案（经权限门）
+│   ├── demand_agent.py  # 需求 Agent：库存分析 → 采购提案（经权限门）
+│   └── receiving_agent.py # 收货 Agent：到货检验（单据核对）→ 入库请求（经权限门）
 ├── main.py              # 最小闭环演示：连接 + 只读查询
 ├── demo_approval.py     # 权限门演示：AI 提交 → 预检 → 人审批 → 执行/拒绝
 ├── sales_demo.py        # 销售 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
 ├── purchase_demo.py     # 采购 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
+├── receiving_demo.py    # 收货 Agent 演示：采购 → 确认 → 到货检验 → 入库 → 清理
 ├── e2e_demo.py          # 端到端链路演示：销售→审批→确认→需求分析→采购→确认→清理
 ├── setup_tier_rule.py   # 创建演示 tier 审批规则（sale + purchase）
+└── scripts/
+    └── cleanup_demo_pickings.sh  # 演示库维护：清理由 demo 产生的已完成收货
 ├── requirements.txt     # Python 依赖
 ├── .env.example         # 配置模板（复制为 .env 后填写）
 └── README.md
@@ -237,6 +241,42 @@ venv/bin/python e2e_demo.py --approve    # 完整链路（每步都有人拍板�
 **需求 Agent**（`agent/demand_agent.py`）读 `qty_available` 算缺口；库存足够时
 不提出采购（`no_purchase_needed`）——AI 做判断，判断结果和理由一起呈现给人工。
 
+## 到货检验（收货 Agent，receiving_demo.py）
+
+采购确认后 Odoo 自动生成收货单（inbound picking）。收货 Agent 是链路第三步：
+
+```
+step 1 创建演示采购单（可乐 × 10）              → 人审批
+step 2 采购 Agent 确认                          → 人审批 → state=purchase
+step 3 收货 Agent 检验：picking 与采购单核对
+       （产品、数量、状态、origin、move 明细）   → 输出检验结论
+step 4 收货 Agent 提交入库请求（button_validate）→ 人审批 → picking state=done
+step 5 清理：未完成 picking + 采购单             → 全部经人审批
+```
+
+```bash
+venv/bin/python receiving_demo.py --scan      # 只读：列出待收货的 inbound picking
+venv/bin/python receiving_demo.py --approve   # 完整链路（每步都有人拍板）
+```
+
+**检验结论示例**：
+
+```
+picking WH/IN/00006 (state=assigned, origin=P00009)
+purchase order P00009 (state=purchase, partner=Administrator, total=11.5)
+  expected line: 可乐 × 10.0 @ 1.0
+  move: 可乐 qty=10.0 done=10.0 state=assigned
+inspection result: document cross-check passed — awaiting human confirmation to receive
+```
+
+**为什么已完成的收货不能删**：Odoo 的库存语义是——`done` 的调拨只能创建退货
+（return）撤销，不能直接删除。`receiving_demo.py --approve` 真实执行收货后会
+保留完成的收货单（真实业务留痕），演示库如需清理由维护脚本处理：
+
+```bash
+bash scripts/cleanup_demo_pickings.sh   # 仅演示库：清掉 demo 产生的 done picking
+```
+
 ## Odoo 19 适配要点（OCA tier validation）
 
 本项目在 Odoo 19 上安装 OCA `base_tier_validation` / `sale_tier_validation` /
@@ -258,8 +298,9 @@ venv/bin/python e2e_demo.py --approve    # 完整链路（每步都有人拍板�
 - [x] 领域 Agent 第一弹：销售 Agent（草稿报价单 → 确认，全程经权限门，`agent/sales_agent.py`）
 - [x] 领域 Agent 第二弹：采购 Agent（草稿采购单 → 确认，`agent/purchase_agent.py`，共用 `domain_agent.py` 基类）
 - [x] 端到端链路雏形：销售 → 审批 → 确认 → 需求分析 → 采购 → 确认 → 清理（`e2e_demo.py`）
+- [x] 到货检验：收货 Agent（单据核对 → 入库请求，`agent/receiving_agent.py` + `receiving_demo.py`）
 - [ ] 领域 Agent 舰队：生产 / 财务 / 物流
-- [ ] 端到端履约链路扩展：到货检验 → 付款 → 生产 → 出货 → 物流 → 签收
+- [ ] 端到端履约链路扩展：检验 → 付款 → 生产 → 出货 → 物流 → 签收
 - [ ] docker-compose 交付：odoo + postgres + ai-agent 三服务
 
 ## 开源协议

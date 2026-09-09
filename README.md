@@ -65,7 +65,8 @@ ai-agent/
 │   ├── receiving_agent.py # 收货 Agent：到货检验（单据核对）→ 入库请求（经权限门）
 │   ├── payment_agent.py # 付款 Agent：供应商账单（创建/过账）→ 付款单（创建/过账）（均经权限门）
 │   ├── production_agent.py # 生产 Agent：生产计划核对（BOM 组件）→ 确认 MO → 完成（经权限门）
-│   └── delivery_agent.py # 出货 Agent：出库核对（与销售单）→ 发货（经权限门）
+│   ├── delivery_agent.py # 出货 Agent：出库核对（与销售单）→ 发货（经权限门）
+│   └── logistics_agent.py # 物流 Agent：承运分配 → 运单登记 → 签收登记（经权限门）
 ├── main.py              # 最小闭环演示：连接 + 只读查询
 ├── demo_approval.py     # 权限门演示：AI 提交 → 预检 → 人审批 → 执行/拒绝
 ├── sales_demo.py        # 销售 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
@@ -74,6 +75,7 @@ ai-agent/
 ├── payment_demo.py      # 付款 Agent 演示：采购 → 收货 → 账单 → 付款（全链审批）→ 清理
 ├── production_demo.py   # 生产 Agent 演示：BOM → 生产订单 → 确认 → 完成 → 清理
 ├── delivery_demo.py     # 出货 Agent 演示：销售 → 确认 → 出库核对 → 发货 → 清理
+├── logistics_demo.py    # 物流 Agent 演示：承运/运单/签收 → 清理
 ├── e2e_demo.py          # 端到端链路演示：销售→审批→确认→需求分析→采购→确认→清理
 ├── setup_tier_rule.py   # 创建演示 tier 审批规则（sale + purchase）
 └── scripts/
@@ -367,6 +369,32 @@ shipping check passed — awaiting human confirmation to ship
 已完成的出库与入库一样受 Odoo 库存语义保护（只能退货撤销），演示库用
 `scripts/cleanup_demo_pickings.sh` 清理。
 
+## 物流（Logistics Agent，logistics_demo.py）
+
+出货后进入物流环节：分配承运商、登记运单号、客户签收。物流 Agent 是
+链路第七步，需要 **delivery 模块**（官方社区版，`odoo-bin -i delivery`）：
+
+```
+step 1 创建配送产品 + 承运商（AI Demo Carrier）   → 人审批
+step 2 创建销售单（带配送方式）                    → 人审批
+step 3 销售 Agent 确认                             → 人审批 → 生成出库单
+step 4 出货 Agent 发货（button_validate）          → 人审批 → done
+step 5 物流 Agent 核对（carrier/运单号/客户）：
+       → 登记运单号（carrier_tracking_ref）        → 人审批
+       → 签收登记（chatter 消息，AI 只记录事件）    → 人审批
+step 6 清理：承运商/配送产品/销售单                → 全部经人审批
+```
+
+```bash
+venv/bin/python logistics_demo.py --scan      # 只读：待物流处理的已发运单
+venv/bin/python logistics_demo.py --approve   # 完整链路
+```
+
+**Odoo 19 字段**：出库单用 `carrier_id`（配送方式）与
+`carrier_tracking_ref`（运单号）；销售单确认后配送方式随出库单生成。
+"客户签收"在社区版没有原生动作，AI 用标准 chatter 消息（`message_post`）
+登记事件——AI 记录事实，人拍板。
+
 ## Odoo 19 适配要点（OCA tier validation）
 
 本项目在 Odoo 19 上安装 OCA `base_tier_validation` / `sale_tier_validation` /
@@ -392,8 +420,10 @@ shipping check passed — awaiting human confirmation to ship
 - [x] 付款：付款 Agent（账单创建/过账 → 付款单创建/过账，`agent/payment_agent.py` + `payment_demo.py`）
 - [x] 生产：生产 Agent（BOM 计划核对 → 确认 MO → 完成，`agent/production_agent.py` + `production_demo.py`）
 - [x] 出货：出货 Agent（出库核对 → 发货，`agent/delivery_agent.py` + `delivery_demo.py`）
-- [ ] 领域 Agent 舰队：财务（应收）/ 物流（承运）
-- [ ] 端到端履约链路扩展：物流 → 签收
+- [x] 物流：物流 Agent（承运分配 → 运单登记 → 签收登记，`agent/logistics_agent.py` + `logistics_demo.py`，依赖 delivery 模块）
+- [ ] 领域 Agent 舰队：财务（应收）
+- [ ] 端到端履约链路扩展：签收后 → 售后/退货
+- [ ] 精益经营监控：交货 / 库存 / 浪费
 - [ ] docker-compose 交付：odoo + postgres + ai-agent 三服务
 
 ## 开源协议

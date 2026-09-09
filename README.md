@@ -63,18 +63,21 @@ ai-agent/
 │   ├── purchase_agent.py # 采购 Agent：草稿采购单 → 确认
 │   ├── demand_agent.py  # 需求 Agent：库存分析 → 采购提案（经权限门）
 │   ├── receiving_agent.py # 收货 Agent：到货检验（单据核对）→ 入库请求（经权限门）
-│   └── payment_agent.py # 付款 Agent：供应商账单（创建/过账）→ 付款单（创建/过账）（均经权限门）
+│   ├── payment_agent.py # 付款 Agent：供应商账单（创建/过账）→ 付款单（创建/过账）（均经权限门）
+│   └── production_agent.py # 生产 Agent：生产计划核对（BOM 组件）→ 确认 MO → 完成（经权限门）
 ├── main.py              # 最小闭环演示：连接 + 只读查询
 ├── demo_approval.py     # 权限门演示：AI 提交 → 预检 → 人审批 → 执行/拒绝
 ├── sales_demo.py        # 销售 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
 ├── purchase_demo.py     # 采购 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
 ├── receiving_demo.py    # 收货 Agent 演示：采购 → 确认 → 到货检验 → 入库 → 清理
 ├── payment_demo.py      # 付款 Agent 演示：采购 → 收货 → 账单 → 付款（全链审批）→ 清理
+├── production_demo.py   # 生产 Agent 演示：BOM → 生产订单 → 确认 → 完成 → 清理
 ├── e2e_demo.py          # 端到端链路演示：销售→审批→确认→需求分析→采购→确认→清理
 ├── setup_tier_rule.py   # 创建演示 tier 审批规则（sale + purchase）
 └── scripts/
     ├── cleanup_demo_pickings.sh  # 演示库维护：清理由 demo 产生的已完成收货
-    └── cleanup_demo_finance.sh   # 演示库维护：清理由 demo 产生的账单与付款
+    ├── cleanup_demo_finance.sh   # 演示库维护：清理由 demo 产生的账单与付款
+    └── cleanup_demo_production.sh # 演示库维护：清理由 demo 产生的生产订单与 BOM
 ├── requirements.txt     # Python 依赖
 ├── .env.example         # 配置模板（复制为 .env 后填写）
 └── README.md
@@ -306,6 +309,31 @@ venv/bin/python payment_demo.py --approve   # 完整链路（每步都有人拍�
 - 付款单过账后的状态是 `in_process`（不是 `posted`）；
 - 已过账账单可以 `button_draft` 回草稿再删除（演示清理路径）。
 
+## 生产（Production Agent，production_demo.py）
+
+到货付款后组织生产。生产 Agent 是链路第五步：
+
+```
+step 1 创建演示 BOM（汉堡 = 可乐 × 2）+ 生产订单（汉堡 × 5）→ 人审批
+step 2 生产 Agent 核对生产计划（产品/数量/BOM 组件）       → 人审批
+        → 确认 MO（action_confirm）→ state=done
+step 3 清理：已完成 MO 保留（真实生产留痕），BOM 经审批删除
+```
+
+```bash
+venv/bin/python production_demo.py --scan      # 只读：列出待生产的 MO
+venv/bin/python production_demo.py --approve   # 完整链路（每步都有人拍板）
+```
+
+**Odoo 社区版行为（适配记录）**：未安装工单模块（`mrp_workorder`）时，简单
+生产订单（无工单/无在制步骤）确认后**立即完成**（`action_confirm` 直接置为
+`done`）。demo 会如实报告这一行为并跳过重复的 mark-done 步骤——AI 不做无
+意义动作。已完成 MO 关联真实库存移动，演示库用维护脚本清理：
+
+```bash
+bash scripts/cleanup_demo_production.sh   # 仅演示库：清 demo 产生的 MO 与 BOM
+```
+
 ## Odoo 19 适配要点（OCA tier validation）
 
 本项目在 Odoo 19 上安装 OCA `base_tier_validation` / `sale_tier_validation` /
@@ -329,8 +357,9 @@ venv/bin/python payment_demo.py --approve   # 完整链路（每步都有人拍�
 - [x] 端到端链路雏形：销售 → 审批 → 确认 → 需求分析 → 采购 → 确认 → 清理（`e2e_demo.py`）
 - [x] 到货检验：收货 Agent（单据核对 → 入库请求，`agent/receiving_agent.py` + `receiving_demo.py`）
 - [x] 付款：付款 Agent（账单创建/过账 → 付款单创建/过账，`agent/payment_agent.py` + `payment_demo.py`）
-- [ ] 领域 Agent 舰队：生产 / 财务 / 物流
-- [ ] 端到端履约链路扩展：生产 → 出货 → 物流 → 签收
+- [x] 生产：生产 Agent（BOM 计划核对 → 确认 MO → 完成，`agent/production_agent.py` + `production_demo.py`）
+- [ ] 领域 Agent 舰队：财务（应收）/ 物流
+- [ ] 端到端履约链路扩展：出货 → 物流 → 签收
 - [ ] docker-compose 交付：odoo + postgres + ai-agent 三服务
 
 ## 开源协议

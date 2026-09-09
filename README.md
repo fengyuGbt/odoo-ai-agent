@@ -58,11 +58,14 @@ ai-agent/
 │   ├── audit.py         # 审计日志（JSONL，全程留痕）
 │   ├── gate.py          # 动作权限门（写操作必须人工确认）
 │   ├── tier_precheck.py # 规则引擎预检（对接 OCA base_tier_validation）
-│   └── sales_agent.py   # 领域 Agent 第一弹：销售（草稿报价单 → 确认）
+│   ├── domain_agent.py  # 领域 Agent 通用基类（发现→预检→提交确认→等审批）
+│   ├── sales_agent.py   # 销售 Agent：草稿报价单 → 确认
+│   └── purchase_agent.py # 采购 Agent：草稿采购单 → 确认
 ├── main.py              # 最小闭环演示：连接 + 只读查询
 ├── demo_approval.py     # 权限门演示：AI 提交 → 预检 → 人审批 → 执行/拒绝
 ├── sales_demo.py        # 销售 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
-├── setup_tier_rule.py   # 创建演示 tier 审批规则
+├── purchase_demo.py     # 采购 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
+├── setup_tier_rule.py   # 创建演示 tier 审批规则（sale + purchase）
 ├── requirements.txt     # Python 依赖
 ├── .env.example         # 配置模板（复制为 .env 后填写）
 └── README.md
@@ -171,6 +174,30 @@ venv/bin/python sales_demo.py --approve    # 完整闭环：创建→审批→�
 - `run_once(only_ids=...)` 限定只处理指定记录——**demo 永远不会碰真实业务订单**；
 - 演示动作自清理：确认后的订单先 `action_cancel` 再删除（Odoo 不允许直接删已确认订单），业务库保持干净。
 
+## 采购 Agent（领域 Agent 第二弹）
+
+`agent/purchase_agent.py`：盯着草稿采购单队列 → 规则预检（purchase tier 规则）
+→ 把"确认采购单"提交权限门 → 人拍板后才执行。端到端链条中，采购 Agent 承接
+销售确认后的采购需求，向供应商下单。
+
+```bash
+venv/bin/python purchase_demo.py --scan       # 只读扫描草稿采购单
+venv/bin/python purchase_demo.py              # 创建 demo 草稿，提交确认请求后停在 pending
+venv/bin/python purchase_demo.py --approve    # 完整闭环：创建→审批→确认→验证→取消→清理
+```
+
+`--approve` 完整闭环输出（节选）：
+
+```
+[purchase-agent] P00002 -> request #2 decision=approved
+[verify] purchase order state after confirmation = purchase
+[demo] cancelled 1 confirmed demo purchase order(s)
+[demo] cleaned 1 demo purchase order(s)
+```
+
+**架构**：销售/采购共用 `agent/domain_agent.py` 通用基类——每个领域 Agent
+只定义模型、草稿状态、确认方法和提交理由，权限门流程只写一次。
+
 ## Odoo 19 适配要点（OCA tier validation）
 
 本项目在 Odoo 19 上安装 OCA `base_tier_validation` / `sale_tier_validation` /
@@ -190,7 +217,8 @@ venv/bin/python sales_demo.py --approve    # 完整闭环：创建→审批→�
 - [x] 全程留痕：审计日志 `agent/audit.py`
 - [x] 规则引擎预检：对接 OCA `base_tier_validation` 的审批层级（`agent/tier_precheck.py`）
 - [x] 领域 Agent 第一弹：销售 Agent（草稿报价单 → 确认，全程经权限门，`agent/sales_agent.py`）
-- [ ] 领域 Agent 舰队：采购 / 生产 / 财务 / 物流
+- [x] 领域 Agent 第二弹：采购 Agent（草稿采购单 → 确认，`agent/purchase_agent.py`，共用 `domain_agent.py` 基类）
+- [ ] 领域 Agent 舰队：生产 / 财务 / 物流
 - [ ] 端到端履约链路：订单 → 采购 → 到货检验 → 付款 → 生产 → 出货 → 物流 → 签收
 - [ ] docker-compose 交付：odoo + postgres + ai-agent 三服务
 

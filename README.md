@@ -60,11 +60,13 @@ ai-agent/
 │   ├── tier_precheck.py # 规则引擎预检（对接 OCA base_tier_validation）
 │   ├── domain_agent.py  # 领域 Agent 通用基类（发现→预检→提交确认→等审批）
 │   ├── sales_agent.py   # 销售 Agent：草稿报价单 → 确认
-│   └── purchase_agent.py # 采购 Agent：草稿采购单 → 确认
+│   ├── purchase_agent.py # 采购 Agent：草稿采购单 → 确认
+│   └── demand_agent.py  # 需求 Agent：库存分析 → 采购提案（经权限门）
 ├── main.py              # 最小闭环演示：连接 + 只读查询
 ├── demo_approval.py     # 权限门演示：AI 提交 → 预检 → 人审批 → 执行/拒绝
 ├── sales_demo.py        # 销售 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
 ├── purchase_demo.py     # 采购 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
+├── e2e_demo.py          # 端到端链路演示：销售→审批→确认→需求分析→采购→确认→清理
 ├── setup_tier_rule.py   # 创建演示 tier 审批规则（sale + purchase）
 ├── requirements.txt     # Python 依赖
 ├── .env.example         # 配置模板（复制为 .env 后填写）
@@ -198,6 +200,43 @@ venv/bin/python purchase_demo.py --approve    # 完整闭环：创建→审批�
 **架构**：销售/采购共用 `agent/domain_agent.py` 通用基类——每个领域 Agent
 只定义模型、草稿状态、确认方法和提交理由，权限门流程只写一次。
 
+## 端到端链路（e2e_demo.py）
+
+第一个端到端切片，串起销售 → 需求分析 → 采购，完全对应创始人的设想：
+**订单下来 → 审批 → 分解出采购订单 → 给供应商下单**。每个动作都过权限门。
+
+```
+step 1 销售录入：创建草稿报价单（带产品行）          → 人审批
+step 2 销售 Agent：确认报价单（action_confirm）      → 人审批 → state=sale
+step 3 需求 Agent：读库存（缺口 10）→ 创建采购草稿   → 人审批
+step 4 采购 Agent：确认采购单（button_confirm）      → 人审批 → state=purchase
+step 5 清理：picking → 采购单 → 销售单（取消+删除）  → 全部经人审批
+```
+
+```bash
+venv/bin/python e2e_demo.py --scan       # 只读：产品库存、草稿单据
+venv/bin/python e2e_demo.py --approve    # 完整链路（每步都有人拍板）
+```
+
+`--approve` 节选：
+
+```
+== step 2: sales agent confirms the quotation (gated) ==
+  S00026 -> request #2 decision=approved
+  [verify] sale state = sale
+== step 3: demand agent checks stock, proposes purchase (gated) ==
+  analysis: needed=10 available=0 shortfall=10
+  purchase_requested -> gate=approved request=#3
+== step 4: purchase agent confirms the purchase order (gated) ==
+  P00006 -> request #4 decision=approved
+  [verify] purchase state = purchase
+== step 5: cleanup (gated) ==
+  cleaned 4 demo picking(s) / 2 demo purchase order(s) / 2 demo sale order(s)
+```
+
+**需求 Agent**（`agent/demand_agent.py`）读 `qty_available` 算缺口；库存足够时
+不提出采购（`no_purchase_needed`）——AI 做判断，判断结果和理由一起呈现给人工。
+
 ## Odoo 19 适配要点（OCA tier validation）
 
 本项目在 Odoo 19 上安装 OCA `base_tier_validation` / `sale_tier_validation` /
@@ -218,8 +257,9 @@ venv/bin/python purchase_demo.py --approve    # 完整闭环：创建→审批�
 - [x] 规则引擎预检：对接 OCA `base_tier_validation` 的审批层级（`agent/tier_precheck.py`）
 - [x] 领域 Agent 第一弹：销售 Agent（草稿报价单 → 确认，全程经权限门，`agent/sales_agent.py`）
 - [x] 领域 Agent 第二弹：采购 Agent（草稿采购单 → 确认，`agent/purchase_agent.py`，共用 `domain_agent.py` 基类）
+- [x] 端到端链路雏形：销售 → 审批 → 确认 → 需求分析 → 采购 → 确认 → 清理（`e2e_demo.py`）
 - [ ] 领域 Agent 舰队：生产 / 财务 / 物流
-- [ ] 端到端履约链路：订单 → 采购 → 到货检验 → 付款 → 生产 → 出货 → 物流 → 签收
+- [ ] 端到端履约链路扩展：到货检验 → 付款 → 生产 → 出货 → 物流 → 签收
 - [ ] docker-compose 交付：odoo + postgres + ai-agent 三服务
 
 ## 开源协议

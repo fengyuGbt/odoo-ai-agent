@@ -64,7 +64,8 @@ ai-agent/
 │   ├── demand_agent.py  # 需求 Agent：库存分析 → 采购提案（经权限门）
 │   ├── receiving_agent.py # 收货 Agent：到货检验（单据核对）→ 入库请求（经权限门）
 │   ├── payment_agent.py # 付款 Agent：供应商账单（创建/过账）→ 付款单（创建/过账）（均经权限门）
-│   └── production_agent.py # 生产 Agent：生产计划核对（BOM 组件）→ 确认 MO → 完成（经权限门）
+│   ├── production_agent.py # 生产 Agent：生产计划核对（BOM 组件）→ 确认 MO → 完成（经权限门）
+│   └── delivery_agent.py # 出货 Agent：出库核对（与销售单）→ 发货（经权限门）
 ├── main.py              # 最小闭环演示：连接 + 只读查询
 ├── demo_approval.py     # 权限门演示：AI 提交 → 预检 → 人审批 → 执行/拒绝
 ├── sales_demo.py        # 销售 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
@@ -72,6 +73,7 @@ ai-agent/
 ├── receiving_demo.py    # 收货 Agent 演示：采购 → 确认 → 到货检验 → 入库 → 清理
 ├── payment_demo.py      # 付款 Agent 演示：采购 → 收货 → 账单 → 付款（全链审批）→ 清理
 ├── production_demo.py   # 生产 Agent 演示：BOM → 生产订单 → 确认 → 完成 → 清理
+├── delivery_demo.py     # 出货 Agent 演示：销售 → 确认 → 出库核对 → 发货 → 清理
 ├── e2e_demo.py          # 端到端链路演示：销售→审批→确认→需求分析→采购→确认→清理
 ├── setup_tier_rule.py   # 创建演示 tier 审批规则（sale + purchase）
 └── scripts/
@@ -334,6 +336,37 @@ venv/bin/python production_demo.py --approve   # 完整链路（每步都有人�
 bash scripts/cleanup_demo_production.sh   # 仅演示库：清 demo 产生的 MO 与 BOM
 ```
 
+## 出货（Delivery Agent，delivery_demo.py）
+
+生产完成后成品出库、交付客户。出货 Agent 是链路第六步：
+
+```
+step 1 创建演示销售单（可乐 × 5）              → 人审批
+step 2 销售 Agent 确认                          → 人审批 → state=sale（生成出库单）
+step 3 出货 Agent 核对出库单与销售单
+       （产品/数量/状态/move 明细）              → 输出核对结论
+step 4 出货 Agent 提交发货（button_validate）    → 人审批 → picking state=done
+step 5 清理：销售单 + 未完成出库单              → 全部经人审批
+```
+
+```bash
+venv/bin/python delivery_demo.py --scan      # 只读：列出待发货的出库单
+venv/bin/python delivery_demo.py --approve   # 完整链路（每步都有人拍板）
+```
+
+**核对结论示例**：
+
+```
+picking WH/OUT/00011 (state=assigned, origin=S00027)
+sale order S00027 (state=sale, partner=Administrator, total=5.75)
+  expected line: 可乐 × 5.0
+  move: 可乐 qty=5.0 done=5.0 state=assigned
+shipping check passed — awaiting human confirmation to ship
+```
+
+已完成的出库与入库一样受 Odoo 库存语义保护（只能退货撤销），演示库用
+`scripts/cleanup_demo_pickings.sh` 清理。
+
 ## Odoo 19 适配要点（OCA tier validation）
 
 本项目在 Odoo 19 上安装 OCA `base_tier_validation` / `sale_tier_validation` /
@@ -358,8 +391,9 @@ bash scripts/cleanup_demo_production.sh   # 仅演示库：清 demo 产生的 MO
 - [x] 到货检验：收货 Agent（单据核对 → 入库请求，`agent/receiving_agent.py` + `receiving_demo.py`）
 - [x] 付款：付款 Agent（账单创建/过账 → 付款单创建/过账，`agent/payment_agent.py` + `payment_demo.py`）
 - [x] 生产：生产 Agent（BOM 计划核对 → 确认 MO → 完成，`agent/production_agent.py` + `production_demo.py`）
-- [ ] 领域 Agent 舰队：财务（应收）/ 物流
-- [ ] 端到端履约链路扩展：出货 → 物流 → 签收
+- [x] 出货：出货 Agent（出库核对 → 发货，`agent/delivery_agent.py` + `delivery_demo.py`）
+- [ ] 领域 Agent 舰队：财务（应收）/ 物流（承运）
+- [ ] 端到端履约链路扩展：物流 → 签收
 - [ ] docker-compose 交付：odoo + postgres + ai-agent 三服务
 
 ## 开源协议

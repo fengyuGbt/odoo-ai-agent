@@ -1,0 +1,63 @@
+# AI operation layer for Odoo — one-command stack.
+#
+#   db        PostgreSQL 16 (matches the WSL source deployment)
+#   odoo      official Odoo 19 image, auto-initializes a demo-ready DB
+#             with the modules every domain agent needs
+#   ai-agent  this project; runs a connectivity check by default and can
+#             launch any demo: docker compose run ai-agent python sales_demo.py --approve
+#
+# Odoo web UI is published on host port 8070 (8069 is kept free for the
+# WSL source deployment). Drop OCA tier-validation modules into ./addons
+# to enable rule precheck; the action gate works without them.
+#
+#   docker compose up --build            # start everything
+#   docker compose run ai-agent bash     # shell inside the agent container
+#   docker compose down -v               # stop and wipe volumes
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: odoo19
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U odoo -d odoo19"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  odoo:
+    image: odoo:19.0
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      odoo --db_host=db --db_port=5432 --db_user=odoo --db_password=odoo
+      -d odoo19
+      -i base,sale_management,purchase,stock,mrp,delivery,account
+    ports:
+      - "8070:8069"
+    volumes:
+      - odoo-web-data:/var/lib/odoo
+      - ./addons:/mnt/extra-addons:ro
+
+  ai-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      - odoo
+    environment:
+      ODOO_HOST: odoo
+      ODOO_PORT: "8069"
+      ODOO_DB: odoo19
+      ODOO_USER: admin
+      ODOO_PASSWORD: admin
+    command: ["python", "docker/wait_then_run.py", "python", "main.py"]
+
+volumes:
+  pgdata:
+  odoo-web-data:

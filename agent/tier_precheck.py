@@ -24,10 +24,18 @@ _SIMPLE_OPS = ("=", "!=", ">", ">=", "<", "<=", "in", "not in", "like")
 
 
 def get_tier_rules(client: OdooClient, model: str) -> list[dict[str, Any]]:
-    """Read active tier rules for *model* (read-only)."""
-    rules = client.env["tier.definition"].search(
-        [("model", "=", model), ("active", "=", True)], order="sequence"
-    )
+    """Read active tier rules for *model* (read-only).
+
+    Degrades gracefully when OCA tier validation is not installed (the
+    ``tier.definition`` model is missing) — precheck is an enhancement,
+    the action gate itself does not depend on it.
+    """
+    try:
+        rules = client.env["tier.definition"].search(
+            [("model", "=", model), ("active", "=", True)], order="sequence"
+        )
+    except Exception:
+        return []
     if not rules:
         return []
     return client.env["tier.definition"].read(

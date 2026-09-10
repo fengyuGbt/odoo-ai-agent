@@ -66,7 +66,8 @@ ai-agent/
 │   ├── payment_agent.py # 付款 Agent：供应商账单（创建/过账）→ 付款单（创建/过账）（均经权限门）
 │   ├── production_agent.py # 生产 Agent：生产计划核对（BOM 组件）→ 确认 MO → 完成（经权限门）
 │   ├── delivery_agent.py # 出货 Agent：出库核对（与销售单）→ 发货（经权限门）
-│   └── logistics_agent.py # 物流 Agent：承运分配 → 运单登记 → 签收登记（经权限门）
+│   ├── logistics_agent.py # 物流 Agent：承运分配 → 运单登记 → 签收登记（经权限门）
+│   └── lean_monitor.py   # 精益经营监控：交货/库存/浪费分析（只读为主，跟进经权限门）
 ├── main.py              # 最小闭环演示：连接 + 只读查询
 ├── demo_approval.py     # 权限门演示：AI 提交 → 预检 → 人审批 → 执行/拒绝
 ├── sales_demo.py        # 销售 Agent 演示：录入 → 预检 → 审批 → 确认 → 清理
@@ -76,6 +77,7 @@ ai-agent/
 ├── production_demo.py   # 生产 Agent 演示：BOM → 生产订单 → 确认 → 完成 → 清理
 ├── delivery_demo.py     # 出货 Agent 演示：销售 → 确认 → 出库核对 → 发货 → 清理
 ├── logistics_demo.py    # 物流 Agent 演示：承运/运单/签收 → 清理
+├── lean_demo.py         # 精益经营监控演示：交货/库存/浪费报告（+ --approve 经权限门跟进）
 ├── e2e_demo.py          # 端到端链路演示：销售→审批→确认→需求分析→采购→确认→清理
 ├── setup_tier_rule.py   # 创建演示 tier 审批规则（sale + purchase）
 ├── docker-compose.yml   # 一键启动：postgres + odoo + ai-agent 三服务
@@ -91,6 +93,27 @@ ai-agent/
 ├── .env.example         # 配置模板（复制为 .env 后填写）
 └── README.md
 ```
+
+## 精益经营监控（管理层 Agent）
+
+流程 Agent 负责"跑"，精益监控负责"看"——**主体只读**，从现场数据算指标、
+暴露异常，由人做经营判断：
+
+```bash
+venv/bin/python lean_demo.py            # 交货/库存/浪费报告（只读）
+venv/bin/python lean_demo.py --approve  # 对最严重延期单经权限门登记提醒
+```
+
+三个视角与口径：
+
+| 视角 | 指标 | 口径 |
+|---|---|---|
+| 交货 | 准时交付率、延期未交付清单 | 已确认单对应出库单；done 且实际 ≤ 计划为准时；未 done 且计划日期 < 今天为延期 |
+| 库存 | 库存价值、净库存、闲置天数 | 按产品聚合各库位 quant × `standard_price`；负库存 / 成本未维护自动标为异常 |
+| 浪费 | 长期停留草稿、退货 | 单据停留 ≥ 14 天计入等待浪费；退货计入缺陷浪费 |
+
+**设计原则**：监控不直接改业务数据；唯一写动作是"提醒"，仍走权限门——
+AI 把数据和异常摆出来，人判断。
 
 ## Docker Compose 一键启动（推荐体验）
 
@@ -465,7 +488,7 @@ venv/bin/python logistics_demo.py --approve   # 完整链路
 - [x] 物流：物流 Agent（承运分配 → 运单登记 → 签收登记，`agent/logistics_agent.py` + `logistics_demo.py`，依赖 delivery 模块）
 - [ ] 领域 Agent 舰队：财务（应收）
 - [ ] 端到端履约链路扩展：签收后 → 售后/退货
-- [ ] 精益经营监控：交货 / 库存 / 浪费
+- [x] 精益经营监控：交货 / 库存 / 浪费（`lean_demo.py`，管理只读分析 + 经权限门跟进）
 - [x] docker-compose 交付：postgres + odoo + ai-agent 三服务（`docker compose up --build`，Web 在 8070）
 
 ## 开源协议
